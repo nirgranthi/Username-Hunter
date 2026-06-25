@@ -95,13 +95,22 @@ def checkUsernameAvailability(session, username, csrftoken, proxies):
 
     proxy = random.choice(proxies) if proxies else None
 
-    response = session.post(url, data=payload, proxies={"http": proxy, "https": proxy} if proxy else None)
+    try:
+        response = session.post(url, data=payload, proxies={"http": proxy, "https": proxy} if proxy else None)
+    except Exception as e:
+        print(f"{YELLOW}[!] Connection error: {e}{RESET}")
+        return None
+
+    if response.status_code == 429:
+        print(f"{YELLOW}[!] Rate limited (429). Use proxies or wait before trying again.{RESET}")
+        return "rate_limited"
 
     try:
         result = response.json()
     except Exception as e:
-        print(f"{YELLOW}[!] Failed to parse response: {e}{RESET}")
-        print(f"{YELLOW}{response.text}{RESET}")
+        print(f"{YELLOW}[!] Failed to parse response (Status Code: {response.status_code}): {e}{RESET}")
+        if response.text:
+            print(f"{YELLOW}{response.text}{RESET}")
         return None
 
     return result
@@ -134,6 +143,9 @@ while True:
         continue
 
     result = checkUsernameAvailability(session, username, csrftoken, working_proxies if use_proxies else [])
+
+    if result == "rate_limited":
+        continue
 
     if not result:
         print(f"{YELLOW}[!] No response or invalid data.{RESET}")
