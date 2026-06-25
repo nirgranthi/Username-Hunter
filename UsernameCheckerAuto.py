@@ -36,7 +36,7 @@ YELLOW = '\033[93m'
 RESET = '\033[0m'
 
 # Make this false to disable proxy usage
-USE_PROXIES = True
+USE_PROXIES = False
 
 lock = threading.Lock()
 working_proxies = []
@@ -142,17 +142,28 @@ def checkUsernameAvailability(session, username, csrftoken):
     try:
         proxy = get_random_proxy()
         response = session.post(url, data=payload, proxies={"http": proxy, "https": proxy} if proxy else None)
-        result = response.json()
-
-        if 'errors' in result and 'username' in result['errors']:
-            return "taken"
-        elif result.get("account_created") is False and result.get("dryrun_passed") is True:
-            return "available"
-        else:
-            return "error"
-
     except Exception as e:
-        print(f"{YELLOW}[!] Error checking '{username}': {e}{RESET}")
+        print(f"{YELLOW}[!] Connection error checking '{username}': {e}{RESET}")
+        return "error"
+
+    if response.status_code == 429:
+        print(f"{YELLOW}[!] Rate limited (429) checking '{username}'. Use proxies or increase delay.{RESET}")
+        return "rate_limited"
+
+    try:
+        result = response.json()
+    except ValueError:
+        print(f"{YELLOW}[!] Failed to parse response JSON for '{username}' (Status Code: {response.status_code}){RESET}")
+        return "error"
+
+    if response.status_code != 200:
+        print(f"{YELLOW}[!] Status code: {response.status_code}{RESET}")
+
+    if 'errors' in result and 'username' in result['errors']:
+        return "taken"
+    elif result.get("account_created") is False and result.get("dryrun_passed") is True:
+        return "available"
+    else:
         return "error"
 
 # Load usernames from file (one per line)
@@ -164,7 +175,7 @@ def load_usernames(filename):
 def write_sorted_results(results, filename="output.csv"):
     available = [r for r in results if r[1] == 'available']
     taken = [r for r in results if r[1] == 'taken']
-    errors = [r for r in results if r[1] == 'error']
+    errors = [r for r in results if r[1] not in ('available', 'taken')]
 
     grouped = available + taken + errors
 
